@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>学习记录 · 江西专升本（高数 / 英语 / 政治 / 信息技术）</title>
+  <meta name="description" content="江西专升本个人学习记录：按科目与知识点记录每日学习内容与时长">
+
+  <!-- PWA：加到主屏幕后全屏运行、有独立图标（manifest 由 app.js 在 http/https 下动态挂载，
+       避免 file:// 打开时浏览器因 CORS 拒绝加载而在控制台报错） -->
+  <meta name="theme-color" content="#4b6bfb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="学习记录">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/favicon.png" type="image/png">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">学</span>
+        <div class="brand-text">
+          <h1>学习记录</h1>
+          <p class="brand-sub">江西专升本 · 高数 / 英语 / 政治 / 信息技术</p>
+          <p class="exam-pill" id="exam-pill" hidden></p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn ghost" id="export-btn">导出备份</button>
+        <button type="button" class="btn ghost" id="csv-btn">导出 CSV</button>
+        <button type="button" class="btn ghost" id="import-btn">导入备份</button>
+        <button type="button" class="btn ghost accent-btn" id="report-btn">生成周报</button>
+        <input type="file" id="import-input" accept=".json,application/json" hidden>
+      </div>
+    </header>
+
+    <div class="banner" id="storage-warning" hidden>
+      当前浏览器禁用了本地存储（可能处于无痕模式），本次记录不会被保存。建议换用普通窗口，或改用本地服务器方式打开。
+    </div>
+
+    <div class="banner" id="load-warning" hidden></div>
+
+    <main class="layout">
+      <!-- 录入 -->
+      <section class="card form-card" aria-labelledby="form-title">
+        <div class="card-head">
+          <h2 id="form-title">新增记录</h2>
+          <button type="button" class="collapse-btn" id="form-toggle" aria-expanded="true" aria-controls="record-form">收起</button>
+        </div>
+
+        <form id="record-form" novalidate>
+          <div class="field">
+            <span class="label" id="subject-label">科目</span>
+            <div class="chips" id="subject-chips" role="group" aria-labelledby="subject-label"></div>
+            <p class="err" id="err-subject" aria-live="polite" hidden></p>
+          </div>
+
+          <!-- 按科目切换的差异化字段（章节 / 错题数 / 词汇量…），由 app.js 动态渲染 -->
+          <div class="extra-fields" id="extra-fields"></div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="label" for="date-input">日期</label>
+              <input type="date" id="date-input" aria-describedby="err-date" required>
+              <p class="err" id="err-date" aria-live="polite" hidden></p>
+            </div>
+            <div class="field">
+              <label class="label" for="minutes-input">时长（分钟）</label>
+              <input type="number" id="minutes-input" min="1" max="1440" step="5" inputmode="numeric" placeholder="60" aria-describedby="err-minutes" required>
+              <p class="err" id="err-minutes" aria-live="polite" hidden></p>
+            </div>
+          </div>
+
+          <div class="quick-minutes" id="quick-minutes" role="group" aria-label="常用时长">
+            <button type="button" class="quick-btn" data-minutes="30">30 分</button>
+            <button type="button" class="quick-btn" data-minutes="45">45 分</button>
+            <button type="button" class="quick-btn" data-minutes="60">1 小时</button>
+            <button type="button" class="quick-btn" data-minutes="90">1.5 小时</button>
+          </div>
+
+          <div class="field">
+            <label class="label" for="tags-input">标签 <span class="label-note">选填，用逗号分隔</span></label>
+            <input type="text" id="tags-input" maxlength="80" placeholder="错题, 极限" aria-describedby="err-tags">
+            <p class="err" id="err-tags" aria-live="polite" hidden></p>
+          </div>
+
+          <div class="field">
+            <div class="label-row">
+              <label class="label" for="content-input">学习内容</label>
+              <button type="button" class="link" id="template-btn">套用模板</button>
+            </div>
+            <textarea id="content-input" rows="3" maxlength="2000" aria-describedby="content-hint err-content" placeholder="例如：一元函数微分学：复合函数求导 12 题，错题 2 道"></textarea>
+            <p class="hint" id="content-hint">选填，写清楚「学了什么 / 卡在哪里」，复习时最有用。</p>
+            <p class="err" id="err-content" aria-live="polite" hidden></p>
+          </div>
+
+          <label class="checkbox" for="review-input">
+            <input type="checkbox" id="review-input">
+            <span>加入复习计划<em class="label-note">（1 / 3 / 7 / 15 天后自动提醒）</em></span>
+          </label>
+
+          <div class="field">
+            <div class="label-row">
+              <span class="label" id="image-label">图片<em class="label-note">（错题 / 材料截图，最多 3 张）</em></span>
+              <button type="button" class="link" id="image-btn">添加图片</button>
+            </div>
+            <div class="image-strip" id="image-strip" aria-labelledby="image-label"></div>
+            <input type="file" id="image-input" accept="image/*" multiple hidden>
+          </div>
+
+          <p class="err form-err" id="err-form" aria-live="polite" hidden></p>
+
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="submit-btn">保存记录</button>
+            <button type="button" class="btn ghost" id="cancel-btn" hidden>取消编辑</button>
+          </div>
+        </form>
+      </section>
+
+      <div class="stack">
+        <!-- 今日复习 -->
+        <section class="card review-card" id="review-card" aria-labelledby="review-title" hidden>
+          <div class="list-head">
+            <h2 id="review-title">今日复习</h2>
+            <p class="list-count" id="review-count"></p>
+          </div>
+          <div class="review-list" id="review-list"></div>
+        </section>
+
+        <!-- 趋势图 -->
+        <section class="card chart-card" aria-labelledby="chart-title">
+          <div class="list-head">
+            <h2 id="chart-title">学习趋势</h2>
+            <div class="segmented" id="chart-range" role="group" aria-label="趋势时间范围">
+              <button type="button" data-days="7" aria-pressed="true">近 7 天</button>
+              <button type="button" data-days="30" aria-pressed="false">近 30 天</button>
+            </div>
+          </div>
+          <p class="chart-meta" id="chart-meta"></p>
+          <p class="chart-compare" id="chart-compare" hidden></p>
+          <div class="legend" id="chart-legend"></div>
+          <div class="chart" id="trend-chart"></div>
+        </section>
+
+        <!-- 知识点分布 -->
+        <section class="card knowledge-card" id="knowledge-card" aria-labelledby="knowledge-title" hidden>
+          <div class="list-head">
+            <h2 id="knowledge-title">知识点分布</h2>
+            <p class="list-count" id="knowledge-meta"></p>
+          </div>
+          <div class="knowledge-list" id="knowledge-list"></div>
+        </section>
+
+        <!-- 查看 -->
+        <section class="card list-card" aria-labelledby="list-title">
+          <div class="list-head">
+            <h2 id="list-title">学习记录</h2>
+            <p class="list-count" id="list-count"></p>
+          </div>
+
+          <div class="filters">
+            <div class="chips chips-sm" id="filter-subjects" role="group" aria-label="按科目筛选"></div>
+            <div class="filters-tools">
+              <input type="search" id="search-input" class="search-input" placeholder="搜索内容 / 日期" aria-label="搜索学习记录">
+              <div class="segmented" id="filter-range" role="group" aria-label="按时间筛选">
+                <button type="button" data-range="week">本周</button>
+                <button type="button" data-range="month">本月</button>
+                <button type="button" data-range="all">全部</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="summary" id="summary"></div>
+
+          <div class="totals" id="totals" hidden></div>
+
+          <div class="tag-stats" id="tag-stats" hidden></div>
+
+          <div class="records" id="records"></div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <span>数据保存在本机浏览器的本地存储中，换设备或清理浏览器数据前请先「导出备份」。</span>
+      <label class="goal-setting" for="goal-input">
+        每日目标
+        <input type="number" id="goal-input" min="10" max="1440" step="10" inputmode="numeric" aria-label="每日目标分钟数">
+        分钟
+      </label>
+      <label class="goal-setting" for="exam-input">
+        考试日期
+        <input type="date" id="exam-input" aria-label="考试日期">
+      </label>
+      <button type="button" class="link danger" id="clear-btn">清空全部数据</button>
+    </footer>
+  </div>
+
+  <dialog class="report-dialog" id="report-dialog" aria-labelledby="report-title">
+    <div class="dialog-head">
+      <h2 id="report-title">最近 7 天复盘</h2>
+      <button type="button" class="icon-btn" id="report-close">关闭</button>
+    </div>
+    <pre class="report-text" id="report-text"></pre>
+    <div class="dialog-actions">
+      <button type="button" class="btn primary" id="report-copy">复制文字</button>
+      <span class="hint" id="report-hint">可直接粘贴到日记 / 复盘文档里</span>
+    </div>
+  </dialog>
+
+  <dialog class="image-dialog" id="image-dialog" aria-label="查看图片">
+    <div class="dialog-head">
+      <h2>错题图片</h2>
+      <button type="button" class="icon-btn" id="image-close">关闭</button>
+    </div>
+    <div class="image-viewer-wrap">
+      <img id="image-viewer" alt="记录图片">
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <span class="toast-text" id="toast-text"></span>
+    <button type="button" class="toast-action" id="toast-action" hidden>撤销</button>
+  </div>
+
+  <script src="files.js"></script>
+  <script src="store.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
