@@ -1407,7 +1407,8 @@ input.invalid, select.invalid, textarea.invalid { border-color: var(--danger); b
 
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-.toast.show.with-action { pointer-events: auto; }
+/* 整个提示条不拦截点击，只有"撤销"按钮可点：避免挡住底下的按钮造成误触 */
+.toast-action { pointer-events: auto; }
 
 .toast-action {
   appearance: none;

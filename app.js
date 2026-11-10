@@ -160,6 +160,28 @@
   var filters = { subject: 'all', range: 'all', keyword: '', tag: '' };
   var settings = S.loadSettings(store);
 
+  /**
+   * "是否用过"标记：只有真正的新用户才显示「载入示例数据」。
+   * 否则用户清空全部数据后，空状态里的示例按钮一点就把 5 条示例又加回来，
+   * 看起来就像"删了没生效"。
+   */
+  var ONBOARD_KEY = 'study-log:onboarded';
+
+  function hasOnboarded() {
+    try { return Boolean(store && store.getItem(ONBOARD_KEY) === '1'); } catch (e) { return false; }
+  }
+
+  function markOnboarded() {
+    try { if (store) store.setItem(ONBOARD_KEY, '1'); } catch (e) { /* 隐私模式写入失败可忽略 */ }
+  }
+
+  /** 重新从存储读取数据，避免多标签页/后台恢复时用旧内存状态覆盖别人的删除 */
+  function reloadStateFromStorage() {
+    var loaded = S.loadState(store);
+    state = { version: loaded.version, records: loaded.records };
+    return loaded;
+  }
+
   /* ---------- 图片附件状态 ---------- */
   var StudyFiles = window.StudyFiles || null;
   var imageSupported = Boolean(StudyFiles && StudyFiles.supported);
@@ -751,7 +773,8 @@
         emptyText = '还没有任何记录。在左侧填一条，今天的学习就算数了。';
       }
       var empty = h('div', { 'class': 'empty-state' }, [h('p', { text: emptyText })]);
-      if (!state.records.length) {
+      // 只有"从没用过"的新用户才给示例按钮；用过又清空后不再出现，避免误点后示例数据"复活"
+      if (!state.records.length && !hasOnboarded()) {
         empty.appendChild(h('button', {
           type: 'button',
           'class': 'btn ghost',
@@ -1370,6 +1393,15 @@
     event.preventDefault();
     clearErrors();
 
+    // 写入前先与存储对齐：避免另一个标签页/后台恢复的旧内存状态把已删除的记录写回去
+    reloadStateFromStorage();
+    if (editingId && !state.records.some(function (r) { return r.id === editingId; })) {
+      resetForm();
+      render();
+      showErrors({ form: '这条记录已在其它窗口被删除，请重新填写。' });
+      return;
+    }
+
     var input = {
       subject: formSubject,
       date: el.date.value,
@@ -1395,6 +1427,8 @@
       return;
     }
 
+    markOnboarded();
+
     // 编辑时被移除的旧图片：数据已保存，可以立刻清理
     if (imageSupported && oldRecord && Array.isArray(oldRecord.images)) {
       var kept = formImages;
@@ -1409,8 +1443,10 @@
   }
 
   function removeRecord(id) {
+    // 与存储对齐后再删，避免旧状态把别处已删的记录带回来
+    reloadStateFromStorage();
     var record = state.records.filter(function (r) { return r.id === id; })[0];
-    if (!record) return;
+    if (!record) { showToast('这条记录已经在别处被删除'); render(); return; }
     var subject = S.subjectById(record.subject);
     var name = subject ? subject.name : '';
     if (!window.confirm('确定删除这条记录吗？\n\n' + dateLabel(record.date) + ' · ' + name + ' · ' + S.formatMinutes(record.minutes) + (record.content ? '\n' + record.content : '') + '\n\n删除后不可恢复。')) {
@@ -1421,6 +1457,15 @@
 
     var saveError = persist(result.state);
     if (saveError) { showToast(saveError + '，记录未删除'); return; }
+
+    // 二次确认：存储里必须真的没有这条了，防止"界面删了、数据还在"
+    var stillStored = S.loadState(store).records.some(function (r) { return r.id === id; });
+    if (stillStored) {
+      reloadStateFromStorage();
+      render();
+      showToast('删除未写入本地存储，请检查浏览器存储空间或隐私模式');
+      return;
+    }
 
     if (editingId === id) {
       // 删的正是编辑中的那条：走取消编辑，顺带把科目还原成编辑前的选择
@@ -1439,6 +1484,7 @@
       label: '撤销',
       onClick: function () {
         cancelImageCleanup();
+        reloadStateFromStorage();
         var restored = S.restoreRecord(state, removedRecord);
         if (!restored.ok) { showToast(restored.error); return; }
         var error = persist(restored.state);
@@ -1548,6 +1594,7 @@
 
       var saveError = persist(parsed.state);
       if (saveError) { showToast(saveError); return; }
+      markOnboarded();
 
       // 导入的数据可能不在当前筛选范围内，重置筛选以免误以为导入失败
       resetFilters();
@@ -1565,6 +1612,7 @@
   }
 
   function clearAll() {
+    reloadStateFromStorage();
     if (!state.records.length) { showToast('当前没有数据'); return; }
     if (!window.confirm('确定清空全部 ' + state.records.length + ' 条记录吗？\n建议先「导出备份」，此操作不可恢复。')) return;
 
@@ -1581,12 +1629,23 @@
       showToast(saveError + '，数据未清空');
       return;
     }
+
+    // 二次确认：存储里确实清空了
+    if (S.loadState(store).records.length) {
+      reloadStateFromStorage();
+      render();
+      showToast('清空未写入本地存储，请检查浏览器存储空间或隐私模式');
+      return;
+    }
+
+    markOnboarded();
     resetForm();
     render();
     scheduleImageCleanup(allImages);
     showToast('已清空 ' + count + ' 条记录', {
       label: '撤销',
       onClick: function () {
+        reloadStateFromStorage();
         if (state.records.length) { showToast('已经有新记录，无法撤销清空'); return; }
         cancelImageCleanup();
         var error = persist(previous);
@@ -1598,6 +1657,12 @@
   }
 
   function loadSample() {
+    reloadStateFromStorage();
+    if (state.records.length) {
+      render();
+      showToast('已经有记录了，示例数据没有载入');
+      return;
+    }
     var samples = [
       {
         subject: 'math', daysAgo: 0, minutes: 90,
@@ -1646,6 +1711,7 @@
     });
     var saveError = persist(next);
     if (saveError) { showToast(saveError); return; }
+    markOnboarded();
     render();
     showToast('已载入 ' + samples.length + ' 条示例记录');
   }
@@ -1846,6 +1912,25 @@
     render();
   });
 
+  // 手机切回页面 / 从后台恢复时重新读存储：防止冻结的旧页面状态把删掉的记录写回去
+  function syncWhenVisible() {
+    if (document.hidden) return;
+    var reloaded = reloadStateFromStorage();
+    if (editingId && !state.records.some(function (r) { return r.id === editingId; })) {
+      resetForm();
+      showToast('正在编辑的记录已在别处被删除');
+    }
+    showLoadWarning(reloaded);
+    render();
+  }
+
+  document.addEventListener('visibilitychange', syncWhenVisible);
+
+  // 从浏览器后退缓存（bfcache）恢复时也要同步一次
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) syncWhenVisible();
+  });
+
   // Esc 取消编辑（比去找"取消编辑"按钮顺手）
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && editingId) {
@@ -1877,6 +1962,8 @@
   renderImageStrip();
 
   takeFormSnapshot();
+  // 已经有数据的老用户视为"已 onboard"，清空后不再出现示例数据按钮
+  if (state.records.length) markOnboarded();
   showLoadWarning(state);
   render();
 
