@@ -155,6 +155,15 @@
           <div class="knowledge-list" id="knowledge-list"></div>
         </section>
 
+        <!-- 成就徽章 -->
+        <section class="card badge-card" aria-labelledby="badge-title">
+          <div class="list-head">
+            <h2 id="badge-title">成就徽章</h2>
+            <p class="list-count" id="badge-count"></p>
+          </div>
+          <div class="badge-grid" id="badge-grid"></div>
+        </section>
+
         <!-- 查看 -->
         <section class="card list-card" aria-labelledby="list-title">
           <div class="list-head">
@@ -208,7 +217,22 @@
     <pre class="report-text" id="report-text"></pre>
     <div class="dialog-actions">
       <button type="button" class="btn primary" id="report-copy">复制文字</button>
+      <button type="button" class="btn" id="card-btn">生成战报图片</button>
       <span class="hint" id="report-hint">可直接粘贴到日记 / 复盘文档里</span>
+    </div>
+  </dialog>
+
+  <dialog class="card-dialog" id="card-dialog" aria-label="本周战报卡片">
+    <div class="dialog-head">
+      <h2>本周战报</h2>
+      <button type="button" class="icon-btn" id="card-close">关闭</button>
+    </div>
+    <div class="card-preview">
+      <canvas id="card-canvas" width="1080" height="1440" aria-label="本周战报卡片图"></canvas>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="btn primary" id="card-download">保存图片</button>
+      <span class="hint" id="card-hint">保存后可以发朋友圈 / 发给同学</span>
     </div>
   </dialog>
 

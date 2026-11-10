@@ -1456,10 +1456,132 @@ input.invalid, select.invalid, textarea.invalid { border-color: var(--danger); b
   background: rgba(22, 28, 44, .92);
 }
 
+
+/* ---------- 成就徽章 ---------- */
+
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.badge-item {
+  appearance: none;
+  font: inherit;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 11px 6px 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  filter: grayscale(1);
+  opacity: .55;
+  transition: transform .15s, border-color .15s, background .15s, opacity .15s;
+}
+
+.badge-item:hover {
+  transform: translateY(-2px);
+  opacity: .85;
+  border-color: var(--line-strong);
+}
+
+.badge-item.unlocked {
+  filter: none;
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+}
+
+.badge-icon { font-size: 22px; line-height: 1; }
+
+.badge-name {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--text-2);
+  text-align: center;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-progress {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-item.unlocked .badge-progress { color: var(--accent); }
+
+/* ---------- 目标达成彩纸 ---------- */
+
+.confetti-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 60;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -24px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  animation-name: confettiFall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes confettiFall {
+  0% { transform: translateY(-24px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(700deg); opacity: 0; }
+}
+
+/* ---------- 战报卡片弹窗 ---------- */
+
+.card-dialog {
+  width: min(560px, calc(100vw - 24px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  padding: 16px;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .5);
+}
+
+.card-dialog::backdrop {
+  background: rgba(10, 14, 26, .55);
+  backdrop-filter: blur(3px);
+}
+
+.card-preview {
+  max-height: 58vh;
+  overflow: auto;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.card-preview canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
 /* ---------- 响应式 ---------- */
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
+  .badge-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .form-card { position: static; }
   .collapse-btn { display: inline-flex; align-items: center; justify-content: center; }
 }
@@ -1537,6 +1659,7 @@ input.invalid, select.invalid, textarea.invalid { border-color: var(--danger); b
     overflow: visible;
   }
   .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .badge-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   /* 知识点行在窄屏隐藏附加指标，避免挤压 */
   .knowledge-row { grid-template-columns: minmax(84px, 1.2fr) minmax(48px, 1fr) auto; }
   .knowledge-extra { display: none; }

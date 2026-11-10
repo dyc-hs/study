@@ -842,6 +842,145 @@
     return { groups: groups.filter(function (g) { return g.items.length > 0; }), total: total };
   }
 
+  /* ------------------------------------------------------------------ */
+  /* 成就徽章                                                              */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * 徽章定义：metric 是 achievements() 里算出来的指标名，target 是解锁线。
+   * 想加徽章只需在这里加一行，界面会自动多一个格子。
+   */
+  var ACHIEVEMENTS = [
+    { id: 'first', name: '开门红', desc: '记录第一条学习记录', icon: '🎉', metric: 'count', target: 1, unit: '条' },
+    { id: 'notes-10', name: '小有积累', desc: '累计记录 10 条', icon: '📝', metric: 'count', target: 10, unit: '条' },
+    { id: 'streak-3', name: '三日不断', desc: '连续打卡 3 天', icon: '🔥', metric: 'streak', target: 3, unit: '天' },
+    { id: 'streak-7', name: '一周不断', desc: '连续打卡 7 天', icon: '🔥', metric: 'streak', target: 7, unit: '天' },
+    { id: 'streak-14', name: '两周坚持', desc: '连续打卡 14 天', icon: '💪', metric: 'streak', target: 14, unit: '天' },
+    { id: 'streak-30', name: '月度铁人', desc: '连续打卡 30 天', icon: '🏆', metric: 'streak', target: 30, unit: '天' },
+    { id: 'hours-10', name: '十小时', desc: '累计学习 10 小时', icon: '⏱️', metric: 'totalMinutes', target: 600, unit: '分钟' },
+    { id: 'hours-50', name: '五十小时', desc: '累计学习 50 小时', icon: '📚', metric: 'totalMinutes', target: 3000, unit: '分钟' },
+    { id: 'hours-100', name: '百小时', desc: '累计学习 100 小时', icon: '🎓', metric: 'totalMinutes', target: 6000, unit: '分钟' },
+    { id: 'day-4h', name: '暴走一天', desc: '单日学习满 4 小时', icon: '⚡', metric: 'maxDayMinutes', target: 240, unit: '分钟' },
+    { id: 'all-subjects', name: '四科齐上', desc: '四门科目都有记录', icon: '🧭', metric: 'subjectCount', target: 4, unit: '门' },
+    { id: 'knowledge-8', name: '知识点猎手', desc: '覆盖 8 个知识点', icon: '🗺️', metric: 'knowledgeCount', target: 8, unit: '个' },
+    { id: 'review-start', name: '开始复习', desc: '把一条记录加入复习计划', icon: '🔁', metric: 'reviewCount', target: 1, unit: '次' },
+    { id: 'image-first', name: '错题留档', desc: '给记录加过图片', icon: '📷', metric: 'imageCount', target: 1, unit: '张' }
+  ];
+
+  /** 计算徽章需要的各项指标 */
+  function achievementContext(records, today) {
+    var list = (records || []).filter(function (r) { return r && parseDate(r.date) && isFinite(r.minutes); });
+    var day = today || todayString();
+    var totalMinutes = 0;
+    var dayMap = Object.create(null);
+    var subjects = Object.create(null);
+    var knowledge = Object.create(null);
+    var reviewCount = 0;
+    var imageCount = 0;
+
+    list.forEach(function (r) {
+      totalMinutes += r.minutes;
+      dayMap[r.date] = (dayMap[r.date] || 0) + r.minutes;
+      subjects[r.subject] = true;
+      if (r.reviewAt || r.reviewStep >= 0) reviewCount += 1;
+      if (Array.isArray(r.images)) imageCount += r.images.length;
+      var field = knowledgeFieldOf(r.subject);
+      var value = r.extra && field ? r.extra[field.key] : '';
+      if (value) knowledge[r.subject + '|' + value] = true;
+    });
+
+    var maxDayMinutes = 0;
+    Object.keys(dayMap).forEach(function (key) {
+      if (dayMap[key] > maxDayMinutes) maxDayMinutes = dayMap[key];
+    });
+
+    return {
+      count: list.length,
+      totalMinutes: totalMinutes,
+      dayCount: Object.keys(dayMap).length,
+      maxDayMinutes: maxDayMinutes,
+      streak: streakDays(list, day),
+      subjectCount: Object.keys(subjects).length,
+      knowledgeCount: Object.keys(knowledge).length,
+      reviewCount: reviewCount,
+      imageCount: imageCount
+    };
+  }
+
+  /** 当前徽章状态（含进度），按定义顺序返回 */
+  function achievements(records, today) {
+    var ctx = achievementContext(records, today);
+    return ACHIEVEMENTS.map(function (item) {
+      var value = Number(ctx[item.metric]) || 0;
+      var progress = Math.min(1, value / item.target);
+      return {
+        id: item.id,
+        name: item.name,
+        desc: item.desc,
+        icon: item.icon,
+        metric: item.metric,
+        unit: item.unit,
+        target: item.target,
+        value: value,
+        unlocked: value >= item.target,
+        progress: progress
+      };
+    });
+  }
+
+  /**
+   * 本周战报卡片的数据（画图用，纯数据）
+   * @param {{today?:string, days?:number, examDate?:string}} options
+   */
+  function weeklyCardData(records, options) {
+    var opts = options || {};
+    var days = Math.max(1, Math.min(31, Math.floor(Number(opts.days)) || 7));
+    var today = opts.today || todayString();
+    var series = trendSeries(records, { days: days, endDate: today });
+    var startDate = series.length ? series[0].date : today;
+    var inWindow = recordsBetween(records, startDate, today);
+
+    var totalMinutes = 0;
+    var dayCount = 0;
+    var best = series[0] || { date: today, total: 0 };
+    var perSubject = {};
+    SUBJECTS.forEach(function (s) { perSubject[s.id] = { id: s.id, name: s.name, color: s.color, minutes: 0 }; });
+
+    series.forEach(function (day) {
+      totalMinutes += day.total;
+      if (day.total > 0) dayCount += 1;
+      if (day.total > best.total) best = day;
+      day.bySubject.forEach(function (subject) {
+        if (perSubject[subject.id]) perSubject[subject.id].minutes += subject.minutes;
+      });
+    });
+
+    var bySubject = SUBJECTS
+      .map(function (s) { return perSubject[s.id]; })
+      .filter(function (s) { return s.minutes > 0; })
+      .sort(function (a, b) { return b.minutes - a.minutes; });
+
+    var badges = achievements(records, today);
+    var unlocked = badges.filter(function (b) { return b.unlocked; }).length;
+
+    return {
+      startDate: startDate,
+      endDate: today,
+      rangeLabel: shortDate(startDate) + ' - ' + shortDate(today),
+      days: days,
+      totalMinutes: totalMinutes,
+      count: inWindow.length,
+      dayCount: dayCount,
+      streak: streakDays(inWindow, today),
+      avgMinutes: Math.round(totalMinutes / days),
+      bestDay: { date: best.date, minutes: best.total },
+      bySubject: bySubject,
+      badgeUnlocked: unlocked,
+      badgeTotal: badges.length,
+      examDays: opts.examDate ? daysUntil(opts.examDate, today) : null
+    };
+  }
+
   /**
    * 生成"最近 N 天"的每日学习时长序列（图表用，纯数据、不碰 DOM）。
    * 缺失的日期补 0，保证柱状图的横轴是连续的，不会因为没学习就断开。
@@ -1237,6 +1376,10 @@
     summarize: summarize,
     subjectTotals: subjectTotals,
     knowledgeStats: knowledgeStats,
+    ACHIEVEMENTS: ACHIEVEMENTS,
+    achievementContext: achievementContext,
+    achievements: achievements,
+    weeklyCardData: weeklyCardData,
     knowledgeFieldOf: knowledgeFieldOf,
     trendSeries: trendSeries,
     tagStats: tagStats,

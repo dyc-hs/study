@@ -131,6 +131,14 @@
     knowledgeCard: document.getElementById('knowledge-card'),
     knowledgeList: document.getElementById('knowledge-list'),
     knowledgeMeta: document.getElementById('knowledge-meta'),
+    badgeGrid: document.getElementById('badge-grid'),
+    badgeCount: document.getElementById('badge-count'),
+    cardBtn: document.getElementById('card-btn'),
+    cardDialog: document.getElementById('card-dialog'),
+    cardCanvas: document.getElementById('card-canvas'),
+    cardDownload: document.getElementById('card-download'),
+    cardClose: document.getElementById('card-close'),
+    cardHint: document.getElementById('card-hint'),
     imageBtn: document.getElementById('image-btn'),
     imageInput: document.getElementById('image-input'),
     imageStrip: document.getElementById('image-strip'),
@@ -933,6 +941,253 @@
     showToast('已筛选知识点：' + value);
   }
 
+  /* ------------------------------------------------------------------ *
+   * 成就徽章 / 目标达成庆祝 / 本周战报卡片
+   * ------------------------------------------------------------------ */
+
+  var BADGE_SEEN_KEY = 'study-log:badges-seen';
+  var CELEBRATED_KEY = 'study-log:celebrated';
+
+  function badgeValueText(badge, value) {
+    // 卡片上空间小，时间用「5.8 小时」这种紧凑写法；完整写法留给 tooltip
+    if (badge.metric === 'totalMinutes' || badge.metric === 'maxDayMinutes') {
+      return Math.round((value / 60) * 10) / 10 + ' 小时';
+    }
+    return value + (badge.unit || '');
+  }
+
+  function renderBadges() {
+    if (!el.badgeGrid) return;
+    var list = S.achievements(state.records, S.todayString());
+    var unlocked = list.filter(function (b) { return b.unlocked; });
+    el.badgeCount.textContent = unlocked.length + ' / ' + list.length + ' 已解锁';
+    el.badgeGrid.textContent = '';
+
+    list.forEach(function (badge) {
+      var progressText = badge.unlocked
+        ? '已解锁'
+        : badgeValueText(badge, badge.value) + ' / ' + badgeValueText(badge, badge.target);
+      el.badgeGrid.appendChild(h('button', {
+        type: 'button',
+        'class': 'badge-item' + (badge.unlocked ? ' unlocked' : ''),
+        title: badge.name + '：' + badge.desc + (badge.unlocked ? '（已解锁）' : '（' + progressText + '）'),
+        'aria-label': badge.name + '：' + badge.desc,
+        onclick: function () {
+          showToast(badge.icon + ' ' + badge.name + ' · ' + badge.desc +
+            (badge.unlocked ? '（已解锁）' : '（进度 ' + progressText + '）'));
+        }
+      }, [
+        h('span', { 'class': 'badge-icon', text: badge.icon }),
+        h('span', { 'class': 'badge-name', text: badge.name }),
+        h('span', { 'class': 'badge-progress', text: progressText })
+      ]));
+    });
+
+    // 新解锁的徽章提示一次（把已解锁列表写进存储，下次不再重复提示）
+    var seen = [];
+    try { seen = JSON.parse(store.getItem(BADGE_SEEN_KEY) || '[]'); } catch (e) { seen = []; }
+    if (!Array.isArray(seen)) seen = [];
+    var newOnes = unlocked.filter(function (b) { return seen.indexOf(b.id) === -1; });
+    if (newOnes.length) {
+      try {
+        store.setItem(BADGE_SEEN_KEY, JSON.stringify(unlocked.map(function (b) { return b.id; })));
+      } catch (e) { /* 忽略 */ }
+      var names = newOnes.slice(0, 3).map(function (b) { return b.name; }).join('、');
+      showToast('🎉 解锁成就：' + names + (newOnes.length > 3 ? ' 等 ' + newOnes.length + ' 个' : ''));
+    }
+  }
+
+  /** 彩纸庆祝（纯 DOM，失败/减少动效时静默跳过） */
+  function launchConfetti() {
+    if (reduceMotion) return;
+    var colors = ['#4b6bfb', '#8b5cf6', '#f08c00', '#12b886', '#f06595', '#ffd43b'];
+    var layer = h('div', { 'class': 'confetti-layer', 'aria-hidden': 'true' });
+    for (var i = 0; i < 44; i++) {
+      layer.appendChild(h('span', {
+        'class': 'confetti-piece',
+        'style': 'left:' + (Math.random() * 100).toFixed(1) + '%;' +
+          'background:' + colors[i % colors.length] + ';' +
+          'animation-delay:' + (Math.random() * 0.5).toFixed(2) + 's;' +
+          'animation-duration:' + (1.5 + Math.random() * 1.2).toFixed(2) + 's'
+      }));
+    }
+    document.body.appendChild(layer);
+    window.setTimeout(function () { layer.remove(); }, 3800);
+  }
+
+  /** 今日达成目标时庆祝一次（每天只庆祝一次） */
+  function checkGoalCelebration() {
+    var goal = Number(settings.dailyGoal);
+    if (!goal) return;
+    var today = S.todayString();
+    var todayMinutes = state.records.reduce(function (sum, record) {
+      return record && record.date === today && isFinite(record.minutes) ? sum + record.minutes : sum;
+    }, 0);
+    if (todayMinutes < goal) return;
+
+    var celebrated = '';
+    try { celebrated = store.getItem(CELEBRATED_KEY) || ''; } catch (e) { celebrated = ''; }
+    if (celebrated === today) return;
+    try { store.setItem(CELEBRATED_KEY, today); } catch (e) { /* 忽略 */ }
+
+    launchConfetti();
+    var messages = [
+      '目标达成！今天的高数，是明天的分数。',
+      '今日目标完成，去喝口水吧。',
+      '又一天达标，稳住这个节奏！',
+      '达成今天的目标，专升本又近一步。'
+    ];
+    showToast('🎉 ' + messages[Math.floor(Math.random() * messages.length)]);
+  }
+
+  /* ---------- 本周战报卡片（canvas 画图，可保存分享） ---------- */
+
+  function roundRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
+  }
+
+  function drawWeeklyCard() {
+    var canvas = el.cardCanvas;
+    if (!canvas || !canvas.getContext) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width;
+    var H = canvas.height;
+    var data = S.weeklyCardData(state.records, { days: 7, examDate: settings.examDate });
+
+    var bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#4b6bfb');
+    bg.addColorStop(0.55, '#7b5cf6');
+    bg.addColorStop(1, '#a855f7');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.arc(W - 120, 130, 230, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(70, H - 110, 170, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.96)';
+    roundRect(ctx, 56, 88, W - 112, H - 176, 44);
+    ctx.fill();
+
+    var left = 116;
+    ctx.fillStyle = '#151a2b';
+    ctx.font = 'bold 64px "Microsoft YaHei", sans-serif';
+    ctx.fillText('本周战报', left, 212);
+    ctx.fillStyle = '#6f7789';
+    ctx.font = '30px "Microsoft YaHei", sans-serif';
+    ctx.fillText(data.rangeLabel + ' · 江西专升本', left, 264);
+
+    // 总时长
+    var hoursText = (data.totalMinutes / 60).toFixed(1).replace('.0', '');
+    ctx.fillStyle = '#4b6bfb';
+    ctx.font = 'bold 132px "Microsoft YaHei", sans-serif';
+    ctx.fillText(hoursText, left, 446);
+    var hoursWidth = ctx.measureText(hoursText).width;
+    ctx.fillStyle = '#151a2b';
+    ctx.font = 'bold 48px "Microsoft YaHei", sans-serif';
+    ctx.fillText('小时', left + hoursWidth + 16, 446);
+
+    // 统计四项
+    var stats = [
+      { label: '记录', value: data.count + ' 条' },
+      { label: '学习天数', value: data.dayCount + ' 天' },
+      { label: '连续打卡', value: data.streak + ' 天' },
+      {
+        label: data.examDays !== null && data.examDays >= 0 ? '距考试' : '已解锁徽章',
+        value: data.examDays !== null && data.examDays >= 0
+          ? data.examDays + ' 天'
+          : data.badgeUnlocked + ' / ' + data.badgeTotal
+      }
+    ];
+    var statY = 566;
+    stats.forEach(function (stat, index) {
+      var x = left + index * 208;
+      ctx.fillStyle = '#6f7789';
+      ctx.font = '28px "Microsoft YaHei", sans-serif';
+      ctx.fillText(stat.label, x, statY);
+      ctx.fillStyle = '#151a2b';
+      ctx.font = 'bold 44px "Microsoft YaHei", sans-serif';
+      ctx.fillText(stat.value, x, statY + 54);
+    });
+
+    // 科目分布
+    var barY = 748;
+    ctx.fillStyle = '#6f7789';
+    ctx.font = '28px "Microsoft YaHei", sans-serif';
+    ctx.fillText('科目分布', left, barY);
+
+    if (!data.bySubject.length) {
+      ctx.fillStyle = '#9aa1b1';
+      ctx.font = '32px "Microsoft YaHei", sans-serif';
+      ctx.fillText('本周还没有记录，先记一条吧', left, barY + 80);
+    } else {
+      var maxMinutes = data.bySubject[0].minutes || 1;
+      data.bySubject.slice(0, 4).forEach(function (subject, index) {
+        var y = barY + 62 + index * 100;
+        ctx.fillStyle = '#4a5167';
+        ctx.font = '32px "Microsoft YaHei", sans-serif';
+        ctx.fillText(subject.name, left, y + 32);
+
+        var barX = left + 180;
+        var barW = 470;
+        ctx.fillStyle = '#eceff7';
+        roundRect(ctx, barX, y + 8, barW, 30, 15);
+        ctx.fill();
+
+        ctx.fillStyle = subject.color;
+        roundRect(ctx, barX, y + 8, Math.max(20, Math.round(barW * (subject.minutes / maxMinutes))), 30, 15);
+        ctx.fill();
+
+        ctx.fillStyle = '#6f7789';
+        ctx.font = '26px "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(S.formatMinutes(subject.minutes), W - 116, y + 34);
+        ctx.textAlign = 'left';
+      });
+    }
+
+    // 底部
+    ctx.fillStyle = '#4b6bfb';
+    ctx.font = 'bold 34px "Microsoft YaHei", sans-serif';
+    ctx.fillText('已解锁成就 ' + data.badgeUnlocked + ' / ' + data.badgeTotal, left, 1236);
+    ctx.fillStyle = '#9aa1b1';
+    ctx.font = '26px "Microsoft YaHei", sans-serif';
+    ctx.fillText('学习记录 · 每天进步一点点', left, 1296);
+  }
+
+  function openCardDialog() {
+    drawWeeklyCard();
+    el.cardHint.textContent = '保存后可以发朋友圈 / 发给同学';
+    if (typeof el.cardDialog.showModal === 'function') el.cardDialog.showModal();
+    else el.cardDialog.setAttribute('open', '');
+  }
+
+  function closeCardDialog() {
+    if (typeof el.cardDialog.close === 'function') el.cardDialog.close();
+    else el.cardDialog.removeAttribute('open');
+  }
+
+  function downloadCard() {
+    try {
+      var url = el.cardCanvas.toDataURL('image/png');
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = '学习记录-战报-' + S.todayString() + '.png';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      showToast('战报图片已保存');
+    } catch (e) {
+      showToast('生成图片失败：' + (e && e.message ? e.message : '未知错误'));
+    }
+  }
+
   function render() {
     var list = S.filterRecords(state.records, {
       subject: filters.subject,
@@ -954,11 +1209,13 @@
     renderSummary(list);
     renderTotals();
     renderKnowledge();
+    renderBadges();
     renderTagStats();
     renderList(list);
     renderReview();
     renderTrend();
     renderExamPill();
+    checkGoalCelebration();
   }
 
   /* ------------------------------------------------------------------ *
@@ -1815,6 +2072,17 @@
   el.reportDialog.addEventListener('click', function (event) {
     if (event.target === el.reportDialog) closeReport();
   });
+
+  // 战报卡片：从周报弹窗生成图片
+  el.cardBtn.addEventListener('click', function () {
+    closeReport();
+    openCardDialog();
+  });
+  el.cardClose.addEventListener('click', closeCardDialog);
+  el.cardDialog.addEventListener('click', function (event) {
+    if (event.target === el.cardDialog) closeCardDialog();
+  });
+  el.cardDownload.addEventListener('click', downloadCard);
   el.imageBtn.addEventListener('click', function () { el.imageInput.click(); });
   el.imageInput.addEventListener('change', function () {
     handleImageFiles(el.imageInput.files);
