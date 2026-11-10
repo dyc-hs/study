@@ -8,7 +8,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'study-log-shell-v4';
+var CACHE_NAME = 'study-log-shell-v5';
 var ASSETS = [
   './',
   './index.html',

@@ -1380,6 +1380,7 @@
     achievementContext: achievementContext,
     achievements: achievements,
     weeklyCardData: weeklyCardData,
+    shortDate: shortDate,
     knowledgeFieldOf: knowledgeFieldOf,
     trendSeries: trendSeries,
     tagStats: tagStats,

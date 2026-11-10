@@ -1152,6 +1152,29 @@
       });
     }
 
+    // 科目少的时候中间会空，补一行"本周最佳"和考试倒计时
+    if (data.bySubject.length <= 2) {
+      var bestY = 1006;
+      ctx.fillStyle = '#6f7789';
+      ctx.font = '28px "Microsoft YaHei", sans-serif';
+      ctx.fillText('本周最佳', left, bestY);
+      ctx.fillStyle = '#151a2b';
+      ctx.font = 'bold 38px "Microsoft YaHei", sans-serif';
+      ctx.fillText(
+        data.bestDay.minutes > 0
+          ? S.shortDate(data.bestDay.date) + ' · ' + S.formatMinutes(data.bestDay.minutes)
+          : '还没有记录',
+        left, bestY + 50
+      );
+
+      ctx.fillStyle = '#6f7789';
+      ctx.font = '26px "Microsoft YaHei", sans-serif';
+      var tip = data.examDays !== null && data.examDays >= 0
+        ? '距离考试还有 ' + data.examDays + ' 天，按这个节奏继续。'
+        : '继续保持，每天进步一点点。';
+      ctx.fillText(tip, left, bestY + 104);
+    }
+
     // 底部
     ctx.fillStyle = '#4b6bfb';
     ctx.font = 'bold 34px "Microsoft YaHei", sans-serif';
