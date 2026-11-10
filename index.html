@@ -19,6 +19,22 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- 动态背景（404 同款视频，本地压缩版；默认开，可在页脚关闭） -->
+  <div class="app-bg" id="app-bg" aria-hidden="true">
+    <video
+      class="app-bg-video"
+      id="bg-video"
+      src="bg-app.mp4"
+      poster="bg-app-poster.jpg"
+      autoplay
+      loop
+      muted
+      playsinline
+      preload="auto"
+    ></video>
+    <div class="app-bg-scrim"></div>
+  </div>
+
   <div class="app">
     <header class="app-header">
       <div class="brand">
@@ -204,6 +220,10 @@
       <label class="goal-setting" for="exam-input">
         考试日期
         <input type="date" id="exam-input" aria-label="考试日期">
+      </label>
+      <label class="goal-setting toggle-setting" for="video-bg-input">
+        动态背景
+        <input type="checkbox" id="video-bg-input" aria-label="开关动态视频背景">
       </label>
       <button type="button" class="link danger" id="clear-btn">清空全部数据</button>
     </footer>

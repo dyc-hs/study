@@ -8,7 +8,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'study-log-shell-v5';
+var CACHE_NAME = 'study-log-shell-v7';
 var ASSETS = [
   './',
   './index.html',
@@ -19,7 +19,9 @@ var ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './bg-app.mp4',
+  './bg-app-poster.jpg'
 ];
 
 self.addEventListener('install', function (event) {

@@ -118,7 +118,7 @@
   var MAX_CONTENT = 2000;
   var MAX_MINUTES = 1440; // 单条记录最长 24 小时，防止误输入
   // 默认考试日期：江西专升本 2027-03-29（可在页脚改；改这里对新用户生效）
-  var DEFAULT_SETTINGS = { dailyGoal: 90, examDate: '2027-03-29' };
+  var DEFAULT_SETTINGS = { dailyGoal: 90, examDate: '2027-03-29', videoBg: true };
 
   /* ------------------------------------------------------------------ */
   /* 基础工具                                                             */
@@ -1101,7 +1101,9 @@
     } else if (typeof source.examDate === 'string' && parseDate(source.examDate)) {
       examDate = source.examDate;
     }
-    return { dailyGoal: goal, examDate: examDate };
+    // 动态背景默认开；只有显式保存过 false 才关
+    var videoBg = source.videoBg !== false;
+    return { dailyGoal: goal, examDate: examDate, videoBg: videoBg };
   }
 
   /** 距目标日期还有几天（今天=0，过去为负）；日期非法返回 null */

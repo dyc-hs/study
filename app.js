@@ -126,6 +126,8 @@
     tagStats: document.getElementById('tag-stats'),
     goalInput: document.getElementById('goal-input'),
     examInput: document.getElementById('exam-input'),
+    bgVideo: document.getElementById('bg-video'),
+    videoBgInput: document.getElementById('video-bg-input'),
     examPill: document.getElementById('exam-pill'),
     totals: document.getElementById('totals'),
     knowledgeCard: document.getElementById('knowledge-card'),
@@ -2051,12 +2053,44 @@
     }
   }
 
+  /* ---------- 动态背景 ---------- */
+
+  /** 打开/关闭视频背景；关闭时立刻暂停，省电省流量 */
+  function applyVideoBg(enabled) {
+    var on = Boolean(enabled);
+    document.body.classList.toggle('video-bg-on', on);
+    if (!el.bgVideo) return;
+    if (on && !reduceMotion) {
+      var playing = el.bgVideo.play();
+      if (playing && typeof playing.catch === 'function') playing.catch(function () { /* 自动播放被拒可忽略 */ });
+    } else {
+      el.bgVideo.pause();
+    }
+  }
+
+  function saveVideoBg() {
+    var enabled = Boolean(el.videoBgInput.checked);
+    var result = S.saveSettings(store, {
+      dailyGoal: settings.dailyGoal,
+      examDate: settings.examDate,
+      videoBg: enabled
+    });
+    if (!result.ok) {
+      el.videoBgInput.checked = !enabled;
+      showToast(result.error);
+      return;
+    }
+    settings = result.settings;
+    applyVideoBg(settings.videoBg);
+    showToast(settings.videoBg ? '已开启动态背景' : '已关闭动态背景');
+  }
+
   /* ---------- 每日目标 / 考试日期 ---------- */
 
   function saveGoal() {
     var value = Number(el.goalInput.value);
     // 注意：两个设置要一起存，否则保存其中一个会把另一个重置掉
-    var result = S.saveSettings(store, { dailyGoal: value, examDate: settings.examDate });
+    var result = S.saveSettings(store, { dailyGoal: value, examDate: settings.examDate, videoBg: settings.videoBg });
     if (!result.ok) { showToast(result.error); return; }
     settings = result.settings;
     el.goalInput.value = String(settings.dailyGoal);
@@ -2066,10 +2100,12 @@
 
   function saveExamDate() {
     var value = el.examInput.value;
-    var result = S.saveSettings(store, { dailyGoal: settings.dailyGoal, examDate: value });
+    var result = S.saveSettings(store, { dailyGoal: settings.dailyGoal, examDate: value, videoBg: settings.videoBg });
     if (!result.ok) { showToast(result.error); return; }
     settings = result.settings;
     el.examInput.value = settings.examDate;
+  el.videoBgInput.checked = Boolean(settings.videoBg);
+  applyVideoBg(settings.videoBg);
     renderExamPill();
     var days = settings.examDate ? S.daysUntil(settings.examDate) : null;
     if (days === null) showToast('已清除考试日期');
@@ -2088,6 +2124,7 @@
   });
   el.templateBtn.addEventListener('click', applyTemplate);
   el.goalInput.addEventListener('change', saveGoal);
+  el.videoBgInput.addEventListener('change', saveVideoBg);
   el.examInput.addEventListener('change', saveExamDate);
   el.reportBtn.addEventListener('click', openReport);
   el.reportClose.addEventListener('click', closeReport);
@@ -2217,6 +2254,17 @@
 
   document.addEventListener('visibilitychange', syncWhenVisible);
 
+  // 切到后台暂停视频、回来后继续（省电）
+  document.addEventListener('visibilitychange', function () {
+    if (!el.bgVideo) return;
+    if (document.hidden) {
+      el.bgVideo.pause();
+    } else if (settings.videoBg && !reduceMotion) {
+      var playing = el.bgVideo.play();
+      if (playing && typeof playing.catch === 'function') playing.catch(function () { /* 忽略 */ });
+    }
+  });
+
   // 从浏览器后退缓存（bfcache）恢复时也要同步一次
   window.addEventListener('pageshow', function (event) {
     if (event.persisted) syncWhenVisible();
@@ -2244,6 +2292,8 @@
   syncChartRange();
   el.goalInput.value = String(settings.dailyGoal);
   el.examInput.value = settings.examDate;
+  el.videoBgInput.checked = Boolean(settings.videoBg);
+  applyVideoBg(settings.videoBg);
 
   if (!imageSupported) {
     el.imageBtn.disabled = true;
